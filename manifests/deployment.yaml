@@ -14,10 +14,10 @@ spec:
         app: todo-web-${TOOL}
     spec:
       containers:
-      - name: todo-web
-        image: ${IMAGE}
-        ports:
-          - containerPort: 80
+        - name: todo-web
+          image: ${IMAGE}
+          ports:
+            - containerPort: 80
 ---
 apiVersion: v1
 kind: Service
@@ -25,7 +25,7 @@ metadata:
   name: todo-web-${TOOL}
 spec:
   ports:
-  - port: 80
+    - port: 80
   selector:
     app: todo-web-${TOOL}
 ---
@@ -37,8 +37,8 @@ spec:
   entryPoints:
     - web
   routes:
-  - match: Host(`todo.${TOOL}.malachowski.me`)
-    kind: Rule
-    services:
-      - name: todo-web-${TOOL}
-        port: 80
+    - match: Host(`todo.${TOOL}.malachowski.me`)
+      kind: Rule
+      services:
+        - name: todo-web-${TOOL}
+          port: 80

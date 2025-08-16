@@ -105,4 +105,3 @@ jobs:
           TOOL: github
         run: |
           envsubst < manifests/deployment.yaml | kubectl apply -f -
-
