@@ -2,7 +2,7 @@ FROM node:20-alpine3.22
 
 COPY package.json package-lock.json ./
 
-RUN npm install --production
+RUN npm install
 
 COPY . .
 
