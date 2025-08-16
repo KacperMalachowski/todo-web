@@ -1,0 +1,118 @@
+stages:
+  - static
+  - test
+  - build
+  - deploy
+
+variables:
+  GCP_PROJECT_ID: malachowski-personal-ai
+  GCP_ARTIFACT_REGISTRY: europe-docker.pkg.dev
+  GCP_ARTIFACT_REGISTRY_URI: europe-docker.pkg.dev/malachowski-personal-ai/diploma-ar
+  GCP_SERVICE_ACCOUNT: gitlab@malachowski-personal-ai.iam.gserviceaccount.com
+  GCP_WORKLOAD_IDENTITY_PROVIDER: projects/941627704467/locations/global/workloadIdentityPools/diploma/providers/gitlab
+  DOCKER_DRIVER: overlay2
+  NODE_VERSION: "20.19.0"
+
+static:
+  stage: static
+  image: node:${NODE_VERSION}
+  script:
+    - npm install -g prettier
+    - npx prettier --check .
+
+# Test job - run unit tests
+test:
+  stage: test
+  image: node:${NODE_VERSION}
+  script:
+    - npm install
+    - npm test
+
+build:
+  stage: build
+  image: google/cloud-sdk:alpine
+  services:
+    - name: docker:dind
+      variables:
+        DOCKER_TLS_CERTDIR: ""
+  variables:
+    IMAGE_TAG: v${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
+    IMAGE_NAME: ${GCP_ARTIFACT_REGISTRY_URI}/gitlab/todo-app
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+  id_tokens:
+    GITLAB_OIDC_TOKEN:
+      aud: https://sts.googleapis.com/
+  before_script:
+    - apk add --no-cache docker-cli
+    - |
+      cat > /tmp/gcp-credentials.json << EOF
+      {
+        "type": "external_account",
+        "audience": "//iam.googleapis.com/${GCP_WORKLOAD_IDENTITY_PROVIDER}",
+        "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+        "token_url": "https://sts.googleapis.com/v1/token",
+        "credential_source": {
+          "file": "/tmp/gitlab_oidc_token.txt"
+        },
+        "service_account_impersonation_url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${GCP_SERVICE_ACCOUNT}:generateAccessToken"
+      }
+      EOF
+    - echo $GITLAB_OIDC_TOKEN > /tmp/gitlab_oidc_token.txt
+    - gcloud auth login --cred-file=/tmp/gcp-credentials.json
+    - gcloud config set project $GCP_PROJECT_ID
+    - gcloud auth configure-docker ${GCP_ARTIFACT_REGISTRY} --quiet
+  script:
+    - docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
+    - |
+      if [ "$CI_COMMIT_BRANCH" = "main" ]; then
+        docker push ${IMAGE_NAME}:${IMAGE_TAG}
+      else
+        echo "Skipping docker push: not on main branch"
+      fi
+    - echo "IMAGE=${IMAGE_NAME}:${IMAGE_TAG}" > build.env
+  artifacts:
+    reports:
+      dotenv: build.env
+
+deploy:
+  stage: deploy
+  image: google/cloud-sdk:alpine
+  dependencies:
+    - build
+  id_tokens:
+    GITLAB_OIDC_TOKEN:
+      aud: https://sts.googleapis.com/
+  before_script:
+    - |
+      cat > /tmp/gcp-credentials.json << EOF
+      {
+        "type": "external_account",
+        "audience": "//iam.googleapis.com/${GCP_WORKLOAD_IDENTITY_PROVIDER}",
+        "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+        "token_url": "https://sts.googleapis.com/v1/token",
+        "credential_source": {
+          "file": "/tmp/gitlab_oidc_token.txt"
+        },
+        "service_account_impersonation_url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${GCP_SERVICE_ACCOUNT}:generateAccessToken"
+      }
+      EOF
+    - echo $GITLAB_OIDC_TOKEN > /tmp/gitlab_oidc_token.txt
+    - gcloud auth login --cred-file=/tmp/gcp-credentials.json
+    - gcloud config set project $GCP_PROJECT_ID
+    - gcloud components install kubectl --quiet
+    - mkdir -p ~/.kube
+    - gcloud secrets versions access latest --secret=k3s-kubeconfig > ~/.kube/config
+    - apk add --no-cache gettext
+  script:
+    - export TOOL="gitlab"
+    - export IMAGE=$IMAGE
+    - envsubst < manifests/deployment.yaml | kubectl apply -f -
+  environment:
+    name: production
+    url: https://todo.gitlab.malachowski.me
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+  needs:
+    - job: build
+      artifacts: true

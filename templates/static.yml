@@ -1,0 +1,14 @@
+jobs:
+  - job: static
+    steps:
+      - checkout: self
+
+      - task: NodeTool@0
+        inputs:
+          version: "20.19.0"
+
+      - script: |
+          set -e
+
+          npm install -g prettier
+          npx prettier --check .
