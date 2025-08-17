@@ -32,7 +32,7 @@ jobs:
             set -e
 
             echo "Create GCP service account key"
-            echo $(gcp_service_account_key) | base64 --decode > ./gcp-key.json
+            echo $(gcp-sa) | base64 --decode > ./gcp-key.json
 
       - task: Bash@3
         inputs:
