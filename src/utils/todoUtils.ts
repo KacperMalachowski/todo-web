@@ -1,4 +1,4 @@
-import type { Todo } from '../types/todo';
+import type { Todo } from "../types/todo";
 
 /**
  * Generate a unique ID for a todo item
