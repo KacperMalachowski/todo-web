@@ -26,8 +26,8 @@ export const AddTodo = ({ onAdd }: AddTodoProps) => {
           className="add-todo-input"
           autoFocus
         />
-        <button 
-          type="submit" 
+        <button
+          type="submit"
           className="add-todo-button"
           disabled={!title.trim()}
         >
